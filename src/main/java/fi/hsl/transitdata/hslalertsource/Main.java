@@ -43,6 +43,8 @@ public class Main {
                     log.error("Cancelation message format is invalid: " + e.getMessage());
                 } catch (IOException e) {
                     log.error("Error with HTTP connection: " + e.getMessage(), e);
+                } catch (Exception e) {
+                    log.error("Exception at poll cycle: ", e);
                 }
             }, 0, pollIntervalInSeconds, TimeUnit.SECONDS);
 
