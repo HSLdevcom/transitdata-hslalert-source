@@ -1,11 +1,11 @@
 package fi.hsl.transitdata.hslalertsource;
 
-import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.transit.realtime.GtfsRealtime;
 import com.typesafe.config.Config;
 import fi.hsl.common.transitdata.TransitdataProperties;
 import fi.hsl.common.transitdata.proto.InternalMessages;
 import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.PulsarClientException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
@@ -46,39 +46,45 @@ public class HslAlertPoller {
         }
 
         GtfsRealtime.FeedMessage feedMessage = GtfsRealtime.FeedMessage.parseFrom(byteArrayOutputStream.toByteArray());
-        System.out.println(feedMessage.getEntityCount());
+        final long timestamp = feedMessage.getHeader().getTimestamp();
+        log.debug("Read {} FeedMessage entities at timestamp {}", feedMessage.getEntityCount(), timestamp);
 
         if (feedMessage.getEntityCount() > 0) {
             for (GtfsRealtime.FeedEntity feedEntity : feedMessage.getEntityList()) {
                 if (feedEntity.hasTripUpdate()) {
-                    GtfsRealtime.TripUpdate tripUpdate = feedEntity.getTripUpdate();
-                    // Only send the message if the TripUpdate is explicitly cancelled
-                    if (tripUpdate.getTrip().hasScheduleRelationship() && tripUpdate.getTrip().getScheduleRelationship() == GtfsRealtime.TripDescriptor.ScheduleRelationship.CANCELED) {
-
-                        String dvjId = jedis.get(TransitdataProperties.formatJoreId(tripUpdate.getTrip().getRouteId(),
-                                String.valueOf(tripUpdate.getTrip().getDirectionId()), tripUpdate.getTrip().getStartDate(),
-                                tripUpdate.getTrip().getStartTime()));
-
-                        InternalMessages.TripCancellation tripCancellation = InternalMessages.TripCancellation.newBuilder()
-                                .setRouteId(tripUpdate.getTrip().getRouteId())
-                                .setDirectionId(tripUpdate.getTrip().getDirectionId())
-                                .setStartDate(tripUpdate.getTrip().getStartDate())
-                                .setStartTime(tripUpdate.getTrip().getStartTime())
-                                .build();
-
-                        producer.newMessage().value(tripCancellation.toByteArray())
-                                .eventTime(feedMessage.getHeader().getTimestamp())
-                                .key(dvjId)
-                                .send();
-
-                        log.debug("Produced a cancellation for trip: " + tripCancellation.getRouteId() + "/" +
-                                tripCancellation.getDirectionId() + "-" + tripCancellation.getStartTime() + "-" +
-                                tripCancellation.getStartDate());
-                    }
-
+                    final GtfsRealtime.TripUpdate tripUpdate = feedEntity.getTripUpdate();
+                    handleCancellation(tripUpdate, timestamp);
                 }
             }
         }
-        System.out.println("FeedMessage: " + feedMessage.getHeader().getTimestamp());
+    }
+
+    private void handleCancellation(GtfsRealtime.TripUpdate tripUpdate, long timestamp) throws PulsarClientException {
+        final GtfsRealtime.TripDescriptor tripDescriptor = tripUpdate.getTrip();
+        // Only send the message if the TripUpdate is explicitly cancelled
+        if (tripDescriptor.hasScheduleRelationship() && tripDescriptor.getScheduleRelationship() == GtfsRealtime.TripDescriptor.ScheduleRelationship.CANCELED) {
+
+            String dvjId = jedis.get(TransitdataProperties.formatJoreId(
+                    tripDescriptor.getRouteId(),
+                    String.valueOf(tripDescriptor.getDirectionId()),
+                    tripDescriptor.getStartDate(),
+                    tripDescriptor.getStartTime()));
+
+            InternalMessages.TripCancellation tripCancellation = InternalMessages.TripCancellation.newBuilder()
+                    .setRouteId(tripDescriptor.getRouteId())
+                    .setDirectionId(tripDescriptor.getDirectionId())
+                    .setStartDate(tripDescriptor.getStartDate())
+                    .setStartTime(tripDescriptor.getStartTime())
+                    .build();
+
+            producer.newMessage().value(tripCancellation.toByteArray())
+                    .eventTime(timestamp)
+                    .key(dvjId)
+                    .send();
+
+            log.info("Produced a cancellation for trip: " + tripCancellation.getRouteId() + "/" +
+                    tripCancellation.getDirectionId() + "-" + tripCancellation.getStartTime() + "-" +
+                    tripCancellation.getStartDate());
+        }
     }
 }

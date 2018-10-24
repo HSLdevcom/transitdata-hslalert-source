@@ -42,20 +42,14 @@ public class Main {
                 } catch (InvalidProtocolBufferException e) {
                     log.error("Cancelation message format is invalid: " + e.getMessage());
                 } catch (IOException e) {
-                    log.error("Error with HTTP connection: " + e.getMessage());
+                    log.error("Error with HTTP connection: " + e.getMessage(), e);
                 }
             }, 0, pollIntervalInSeconds, TimeUnit.SECONDS);
 
 
         } catch (Exception e) {
-            log.error(e.getMessage());
+            log.error("Exception at Main: " + e.getMessage(), e);
         }
-
-
-
-
-
-
     }
 
 }
