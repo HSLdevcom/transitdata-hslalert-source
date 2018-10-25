@@ -54,6 +54,7 @@ public class HslAlertPoller {
             for (GtfsRealtime.FeedEntity feedEntity : feedMessage.getEntityList()) {
                 if (feedEntity.hasTripUpdate()) {
                     final GtfsRealtime.TripUpdate tripUpdate = feedEntity.getTripUpdate();
+                    //Would be nice to use the actual message timestamp, now it's the whole FeedMessage timestamp.
                     handleCancellation(tripUpdate, timestamp);
                 }
             }
