@@ -66,10 +66,12 @@ public class HslAlertPoller {
             final GtfsRealtime.TripDescriptor tripDescriptor = tripUpdate.getTrip();
             // Only send the message if the TripUpdate is explicitly cancelled
             if (tripDescriptor.hasScheduleRelationship() && tripDescriptor.getScheduleRelationship() == GtfsRealtime.TripDescriptor.ScheduleRelationship.CANCELED) {
+                //GTFS-RT direction is mapped to 0 & 1, our cache keys are in Jore-format 1 & 2
+                final int joreDirection = tripDescriptor.getDirectionId() + 1;
 
                 final String cacheKey = TransitdataProperties.formatJoreId(
                         tripDescriptor.getRouteId(),
-                        String.valueOf(tripDescriptor.getDirectionId()),
+                        Integer.toString(joreDirection),
                         tripDescriptor.getStartDate(),
                         tripDescriptor.getStartTime());
                 final String dvjId = jedis.get(cacheKey);
