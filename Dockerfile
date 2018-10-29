@@ -27,6 +27,6 @@ FROM openjdk:8-jre-slim
 
 #This container can access the build artifacts inside the BUILD container.
 #Everything that is not copied is discarded
-COPY --from=BUILD /usr/src/app/target/transitdata-haslalert-source-jar-with-dependencies.jar /usr/app/transitdata-hslalert-source.jar
+COPY --from=BUILD /usr/src/app/target/transitdata-hslalert-source-jar-with-dependencies.jar /usr/app/transitdata-hslalert-source.jar
 
 ENTRYPOINT ["java", "-jar", "/usr/app/transitdata-hslalert-source.jar"]
