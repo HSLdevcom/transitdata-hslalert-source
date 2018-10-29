@@ -89,6 +89,8 @@ public class HslAlertPoller {
                     producer.newMessage().value(tripCancellation.toByteArray())
                             .eventTime(timestamp)
                             .key(dvjId)
+                            .property(TransitdataProperties.KEY_DVJ_ID, dvjId)
+                            .property(TransitdataProperties.KEY_PROTOBUF_SCHEMA, TransitdataProperties.ProtobufSchema.InternalMessagesTripCancellation.toString())
                             .send();
 
                     log.info("Produced a cancellation for trip: " + tripCancellation.getRouteId() + "/" +
