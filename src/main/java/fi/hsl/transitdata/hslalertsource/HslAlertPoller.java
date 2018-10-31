@@ -33,11 +33,16 @@ public class HslAlertPoller {
         this.jedis = jedis;
     }
 
-    static GtfsRealtime.FeedMessage readFeedMessage(String url) throws IOException, InvalidProtocolBufferException {
+    public void poll() throws InvalidProtocolBufferException, PulsarClientException, IOException {
+        GtfsRealtime.FeedMessage feedMessage = readFeedMessage(urlString);
+        handleFeedMessage(feedMessage);
+    }
+
+    static GtfsRealtime.FeedMessage readFeedMessage(String url) throws InvalidProtocolBufferException, IOException {
         return readFeedMessage(new URL(url));
     }
 
-    static GtfsRealtime.FeedMessage readFeedMessage(URL url) throws IOException, InvalidProtocolBufferException {
+    static GtfsRealtime.FeedMessage readFeedMessage(URL url) throws InvalidProtocolBufferException, IOException {
         log.info("Reading alerts from " + url);
 
         try  (InputStream inputStream = url.openStream()) {
@@ -61,12 +66,7 @@ public class HslAlertPoller {
                 .collect(Collectors.toList());
     }
 
-    public void poll() throws InvalidProtocolBufferException, PulsarClientException, IOException {
-        GtfsRealtime.FeedMessage feedMessage = readFeedMessage(urlString);
-        handleFeedMessage(feedMessage);
-    }
-
-    void handleFeedMessage(GtfsRealtime.FeedMessage feedMessage) throws PulsarClientException {
+    private void handleFeedMessage(GtfsRealtime.FeedMessage feedMessage) throws PulsarClientException {
         final long timestamp = feedMessage.getHeader().getTimestamp();
 
         List<GtfsRealtime.TripUpdate> tripUpdates = getTripUpdates(feedMessage);
@@ -129,4 +129,5 @@ public class HslAlertPoller {
         }
 
     }
+
 }
