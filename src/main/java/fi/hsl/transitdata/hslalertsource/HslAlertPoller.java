@@ -1,5 +1,6 @@
 package fi.hsl.transitdata.hslalertsource;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.transit.realtime.GtfsRealtime;
 import com.typesafe.config.Config;
 import fi.hsl.common.transitdata.TransitdataProperties;
@@ -30,23 +31,26 @@ public class HslAlertPoller {
         this.jedis = jedis;
     }
 
-    public void poll() throws IOException {
-        log.info("Fetching alerts from " + urlString);
+    GtfsRealtime.FeedMessage readFeedMessage(String url) throws IOException, InvalidProtocolBufferException {
+        log.info("Reading alerts from " + url);
 
-        URL hslAlertUrl = new URL(urlString);
-        HttpURLConnection con = (HttpURLConnection) hslAlertUrl.openConnection();
+        URL hslAlertUrl = new URL(url);
+        try  (InputStream inputStream = hslAlertUrl.openStream()) {
+            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
-        InputStream inputStream = con.getInputStream();
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+            byte[] readWindow = new byte[256];
+            int numberOfBytesRead;
 
-        byte[] readWindow = new byte[256];
-        int numberOfBytesRead;
-
-        while ((numberOfBytesRead = inputStream.read(readWindow)) > 0) {
-            byteArrayOutputStream.write(readWindow, 0, numberOfBytesRead);
+            while ((numberOfBytesRead = inputStream.read(readWindow)) > 0) {
+                byteArrayOutputStream.write(readWindow, 0, numberOfBytesRead);
+            }
+            return GtfsRealtime.FeedMessage.parseFrom(byteArrayOutputStream.toByteArray());
         }
+    }
 
-        GtfsRealtime.FeedMessage feedMessage = GtfsRealtime.FeedMessage.parseFrom(byteArrayOutputStream.toByteArray());
+    public void poll() throws IOException {
+
+        GtfsRealtime.FeedMessage feedMessage = readFeedMessage(urlString);
         final long timestamp = feedMessage.getHeader().getTimestamp();
         log.info("Read {} FeedMessage entities. Timestamp {}", feedMessage.getEntityCount(), timestamp);
 
