@@ -2,10 +2,12 @@ package fi.hsl.transitdata.hslalertsource;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.transit.realtime.GtfsRealtime;
+import fi.hsl.common.transitdata.proto.InternalMessages;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.net.URL;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -24,7 +26,30 @@ public class HslAlertPollerTest {
         assertNotNull(feed);
 
         assertEquals(expectedEntities, feed.getEntityCount());
-        assertEquals(expectedTripUpdates, HslAlertPoller.getTripUpdates(feed).size());
+
+        List<GtfsRealtime.TripUpdate> tripUpdates = HslAlertPoller.getTripUpdates(feed);
+        assertEquals(expectedTripUpdates, tripUpdates.size());
+
+        for (GtfsRealtime.TripUpdate update: tripUpdates) {
+            validateInternalMessage(update);
+        }
+    }
+
+    private void validateInternalMessage(GtfsRealtime.TripUpdate update) {
+        final GtfsRealtime.TripDescriptor trip = update.getTrip();
+        final InternalMessages.TripCancellation cancellation = HslAlertPoller.createPulsarPayload(trip);
+
+        assertEquals(trip.getDirectionId(), cancellation.getDirectionId());
+        assertEquals(trip.getRouteId(), cancellation.getRouteId());
+
+        assertNotNull(cancellation.getStartTime());
+        assertEquals(trip.getStartTime(), cancellation.getStartTime());
+
+        assertNotNull(cancellation.getStartDate());
+        assertEquals(trip.getStartDate(), cancellation.getStartDate());
+        assertEquals(1, cancellation.getSchemaVersion());
+
+        assertEquals(InternalMessages.TripCancellation.Status.CANCELED, cancellation.getStatus());
     }
 
     private URL getTestResource(String name) {

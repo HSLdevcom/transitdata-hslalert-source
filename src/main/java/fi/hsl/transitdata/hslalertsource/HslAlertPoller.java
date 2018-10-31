@@ -14,7 +14,6 @@ import redis.clients.jedis.Jedis;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -78,6 +77,19 @@ public class HslAlertPoller {
         }
     }
 
+    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor) {
+        InternalMessages.TripCancellation.Builder builder = InternalMessages.TripCancellation.newBuilder()
+                .setRouteId(tripDescriptor.getRouteId())
+                .setDirectionId(tripDescriptor.getDirectionId())
+                .setStartDate(tripDescriptor.getStartDate())
+                .setStartTime(tripDescriptor.getStartTime())
+                .setStatus(InternalMessages.TripCancellation.Status.CANCELED);
+        //Version number is defined in the proto file as default value but we still need to set it since it's a required field
+        builder.setSchemaVersion(builder.getSchemaVersion());
+
+        return builder.build();
+    }
+
     private void handleCancellation(GtfsRealtime.TripUpdate tripUpdate, long timestamp) throws PulsarClientException {
         try {
             final GtfsRealtime.TripDescriptor tripDescriptor = tripUpdate.getTrip();
@@ -93,16 +105,8 @@ public class HslAlertPoller {
                         tripDescriptor.getStartTime());
                 final String dvjId = jedis.get(cacheKey);
                 if (dvjId != null) {
-                    InternalMessages.TripCancellation.Builder builder = InternalMessages.TripCancellation.newBuilder()
-                            .setRouteId(tripDescriptor.getRouteId())
-                            .setDirectionId(tripDescriptor.getDirectionId())
-                            .setStartDate(tripDescriptor.getStartDate())
-                            .setStartTime(tripDescriptor.getStartTime())
-                            .setStatus(InternalMessages.TripCancellation.Status.CANCELED);
-                    //Version number is defined in the proto file as default value but we still need to set it since it's a required field
-                    builder.setSchemaVersion(builder.getSchemaVersion());
+                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor);
 
-                    InternalMessages.TripCancellation tripCancellation = builder.build();
                     producer.newMessage().value(tripCancellation.toByteArray())
                             .eventTime(timestamp)
                             .key(dvjId)
