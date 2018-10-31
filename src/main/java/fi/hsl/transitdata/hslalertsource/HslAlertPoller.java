@@ -16,6 +16,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class HslAlertPoller {
 
@@ -31,11 +33,14 @@ public class HslAlertPoller {
         this.jedis = jedis;
     }
 
-    GtfsRealtime.FeedMessage readFeedMessage(String url) throws IOException, InvalidProtocolBufferException {
+    static GtfsRealtime.FeedMessage readFeedMessage(String url) throws IOException, InvalidProtocolBufferException {
+        return readFeedMessage(new URL(url));
+    }
+
+    static GtfsRealtime.FeedMessage readFeedMessage(URL url) throws IOException, InvalidProtocolBufferException {
         log.info("Reading alerts from " + url);
 
-        URL hslAlertUrl = new URL(url);
-        try  (InputStream inputStream = hslAlertUrl.openStream()) {
+        try  (InputStream inputStream = url.openStream()) {
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
             byte[] readWindow = new byte[256];
@@ -48,20 +53,28 @@ public class HslAlertPoller {
         }
     }
 
+    static List<GtfsRealtime.TripUpdate> getTripUpdates(GtfsRealtime.FeedMessage feedMessage) {
+        return feedMessage.getEntityList()
+                .stream()
+                .filter(GtfsRealtime.FeedEntity::hasTripUpdate)
+                .map(GtfsRealtime.FeedEntity::getTripUpdate)
+                .collect(Collectors.toList());
+    }
+
     public void poll() throws InvalidProtocolBufferException, PulsarClientException, IOException {
-
         GtfsRealtime.FeedMessage feedMessage = readFeedMessage(urlString);
-        final long timestamp = feedMessage.getHeader().getTimestamp();
-        log.info("Read {} FeedMessage entities. Timestamp {}", feedMessage.getEntityCount(), timestamp);
+        handleFeedMessage(feedMessage);
+    }
 
-        if (feedMessage.getEntityCount() > 0) {
-            for (GtfsRealtime.FeedEntity feedEntity : feedMessage.getEntityList()) {
-                if (feedEntity.hasTripUpdate()) {
-                    final GtfsRealtime.TripUpdate tripUpdate = feedEntity.getTripUpdate();
-                    //Would be nice to use the actual message timestamp, now it's the whole FeedMessage timestamp.
-                    handleCancellation(tripUpdate, timestamp);
-                }
-            }
+    void handleFeedMessage(GtfsRealtime.FeedMessage feedMessage) throws PulsarClientException {
+        final long timestamp = feedMessage.getHeader().getTimestamp();
+
+        List<GtfsRealtime.TripUpdate> tripUpdates = getTripUpdates(feedMessage);
+        log.info("Handle {} FeedMessage entities with {} TripUpdates. Timestamp {}",
+                feedMessage.getEntityCount(), tripUpdates.size(), timestamp);
+
+        for (GtfsRealtime.TripUpdate tripUpdate: tripUpdates) {
+            handleCancellation(tripUpdate, timestamp);
         }
     }
 
