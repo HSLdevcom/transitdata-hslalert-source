@@ -23,19 +23,13 @@ public class Main {
 
     public static void main(String[] args) {
 
-        try {
-
-            Config config = ConfigParser.createConfig("environment.conf");
-
-            int pollIntervalInSeconds = config.getInt("poller.interval");
-
-            final PulsarApplication app = PulsarApplication.newInstance(config);
+        Config config = ConfigParser.createConfig();
+        try (final PulsarApplication app = PulsarApplication.newInstance(config)) {
             final PulsarApplicationContext context = app.getContext();
-
             final HslAlertPoller poller = new HslAlertPoller(context.getProducer(), context.getJedis(), config);
 
+            final int pollIntervalInSeconds = config.getInt("poller.interval");
             final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
             scheduler.scheduleAtFixedRate(() -> {
                 try {
                     poller.poll();
