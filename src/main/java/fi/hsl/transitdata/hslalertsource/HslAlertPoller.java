@@ -48,7 +48,7 @@ public class HslAlertPoller {
         }
     }
 
-    public void poll() throws IOException {
+    public void poll() throws InvalidProtocolBufferException, PulsarClientException, IOException {
 
         GtfsRealtime.FeedMessage feedMessage = readFeedMessage(urlString);
         final long timestamp = feedMessage.getHeader().getTimestamp();
