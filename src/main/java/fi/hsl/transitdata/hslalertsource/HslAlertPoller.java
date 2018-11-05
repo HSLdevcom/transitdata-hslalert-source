@@ -1,5 +1,6 @@
 package fi.hsl.transitdata.hslalertsource;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.transit.realtime.GtfsRealtime;
 import com.typesafe.config.Config;
 import fi.hsl.common.transitdata.TransitdataProperties;
@@ -13,8 +14,9 @@ import redis.clients.jedis.Jedis;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class HslAlertPoller {
 
@@ -30,35 +32,62 @@ public class HslAlertPoller {
         this.jedis = jedis;
     }
 
-    public void poll() throws IOException {
-        log.info("Fetching alerts from " + urlString);
+    public void poll() throws InvalidProtocolBufferException, PulsarClientException, IOException {
+        GtfsRealtime.FeedMessage feedMessage = readFeedMessage(urlString);
+        handleFeedMessage(feedMessage);
+    }
 
-        URL hslAlertUrl = new URL(urlString);
-        HttpURLConnection con = (HttpURLConnection) hslAlertUrl.openConnection();
+    static GtfsRealtime.FeedMessage readFeedMessage(String url) throws InvalidProtocolBufferException, IOException {
+        return readFeedMessage(new URL(url));
+    }
 
-        InputStream inputStream = con.getInputStream();
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    static GtfsRealtime.FeedMessage readFeedMessage(URL url) throws InvalidProtocolBufferException, IOException {
+        log.info("Reading alerts from " + url);
 
-        byte[] readWindow = new byte[256];
-        int numberOfBytesRead;
+        try  (InputStream inputStream = url.openStream()) {
+            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
-        while ((numberOfBytesRead = inputStream.read(readWindow)) > 0) {
-            byteArrayOutputStream.write(readWindow, 0, numberOfBytesRead);
-        }
+            byte[] readWindow = new byte[256];
+            int numberOfBytesRead;
 
-        GtfsRealtime.FeedMessage feedMessage = GtfsRealtime.FeedMessage.parseFrom(byteArrayOutputStream.toByteArray());
-        final long timestamp = feedMessage.getHeader().getTimestamp();
-        log.info("Read {} FeedMessage entities. Timestamp {}", feedMessage.getEntityCount(), timestamp);
-
-        if (feedMessage.getEntityCount() > 0) {
-            for (GtfsRealtime.FeedEntity feedEntity : feedMessage.getEntityList()) {
-                if (feedEntity.hasTripUpdate()) {
-                    final GtfsRealtime.TripUpdate tripUpdate = feedEntity.getTripUpdate();
-                    //Would be nice to use the actual message timestamp, now it's the whole FeedMessage timestamp.
-                    handleCancellation(tripUpdate, timestamp);
-                }
+            while ((numberOfBytesRead = inputStream.read(readWindow)) > 0) {
+                byteArrayOutputStream.write(readWindow, 0, numberOfBytesRead);
             }
+            return GtfsRealtime.FeedMessage.parseFrom(byteArrayOutputStream.toByteArray());
         }
+    }
+
+    static List<GtfsRealtime.TripUpdate> getTripUpdates(GtfsRealtime.FeedMessage feedMessage) {
+        return feedMessage.getEntityList()
+                .stream()
+                .filter(GtfsRealtime.FeedEntity::hasTripUpdate)
+                .map(GtfsRealtime.FeedEntity::getTripUpdate)
+                .collect(Collectors.toList());
+    }
+
+    private void handleFeedMessage(GtfsRealtime.FeedMessage feedMessage) throws PulsarClientException {
+        final long timestamp = feedMessage.getHeader().getTimestamp();
+
+        List<GtfsRealtime.TripUpdate> tripUpdates = getTripUpdates(feedMessage);
+        log.info("Handle {} FeedMessage entities with {} TripUpdates. Timestamp {}",
+                feedMessage.getEntityCount(), tripUpdates.size(), timestamp);
+
+        for (GtfsRealtime.TripUpdate tripUpdate: tripUpdates) {
+            handleCancellation(tripUpdate, timestamp);
+        }
+    }
+
+    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor) {
+        InternalMessages.TripCancellation.Builder builder = InternalMessages.TripCancellation.newBuilder()
+                .setRouteId(tripDescriptor.getRouteId())
+                .setDirectionId(tripDescriptor.getDirectionId())
+                .setStartDate(tripDescriptor.getStartDate())
+                .setStartTime(tripDescriptor.getStartTime())
+                .setStatus(InternalMessages.TripCancellation.Status.CANCELED);
+        //Version number is defined in the proto file as default value but we still need to set it since it's a required field
+        builder.setSchemaVersion(builder.getSchemaVersion());
+
+        return builder.build();
     }
 
     private void handleCancellation(GtfsRealtime.TripUpdate tripUpdate, long timestamp) throws PulsarClientException {
@@ -76,16 +105,8 @@ public class HslAlertPoller {
                         tripDescriptor.getStartTime());
                 final String dvjId = jedis.get(cacheKey);
                 if (dvjId != null) {
-                    InternalMessages.TripCancellation.Builder builder = InternalMessages.TripCancellation.newBuilder()
-                            .setRouteId(tripDescriptor.getRouteId())
-                            .setDirectionId(tripDescriptor.getDirectionId())
-                            .setStartDate(tripDescriptor.getStartDate())
-                            .setStartTime(tripDescriptor.getStartTime())
-                            .setStatus(InternalMessages.TripCancellation.Status.CANCELED);
-                    //Version number is defined in the proto file as default value but we still need to set it since it's a required field
-                    builder.setSchemaVersion(builder.getSchemaVersion());
+                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor);
 
-                    InternalMessages.TripCancellation tripCancellation = builder.build();
                     producer.newMessage().value(tripCancellation.toByteArray())
                             .eventTime(timestamp)
                             .key(dvjId)
@@ -112,4 +133,5 @@ public class HslAlertPoller {
         }
 
     }
+
 }

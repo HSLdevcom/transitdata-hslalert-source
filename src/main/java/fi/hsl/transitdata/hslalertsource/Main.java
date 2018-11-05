@@ -14,6 +14,7 @@ import fi.hsl.common.config.ConfigUtils;
 import fi.hsl.common.config.ConfigParser;
 import fi.hsl.common.pulsar.PulsarApplication;
 import fi.hsl.common.pulsar.PulsarApplicationContext;
+import org.apache.pulsar.client.api.PulsarClientException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,27 +25,26 @@ public class Main {
     public static void main(String[] args) {
 
         try {
-
-            Config config = ConfigParser.createConfig("environment.conf");
-
-            int pollIntervalInSeconds = config.getInt("poller.interval");
-
+            final Config config = ConfigParser.createConfig();
             final PulsarApplication app = PulsarApplication.newInstance(config);
             final PulsarApplicationContext context = app.getContext();
-
             final HslAlertPoller poller = new HslAlertPoller(context.getProducer(), context.getJedis(), config);
 
+            final int pollIntervalInSeconds = config.getInt("poller.interval");
             final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
             scheduler.scheduleAtFixedRate(() -> {
                 try {
                     poller.poll();
                 } catch (InvalidProtocolBufferException e) {
-                    log.error("Cancelation message format is invalid: " + e.getMessage());
+                    log.error("Cancellation message format is invalid", e);
+                } catch (PulsarClientException e) {
+                    log.error("Pulsar connection error", e);
+                    closeApplication(app, scheduler);
                 } catch (IOException e) {
                     log.error("Error with HTTP connection: " + e.getMessage(), e);
                 } catch (Exception e) {
-                    log.error("Exception at poll cycle: ", e);
+                    log.error("Unknown exception at poll cycle: ", e);
+                    closeApplication(app, scheduler);
                 }
             }, 0, pollIntervalInSeconds, TimeUnit.SECONDS);
 
@@ -54,4 +54,9 @@ public class Main {
         }
     }
 
+    private static void closeApplication(PulsarApplication app, ScheduledExecutorService scheduler) {
+        log.warn("Closing application");
+        scheduler.shutdown();
+        app.close();
+    }
 }
