@@ -72,4 +72,64 @@ public class HslAlertPollerTest {
         URL textFile = getTestResource("test.txt");
         HslAlertPoller.readFeedMessage(textFile);
     }
+
+    @Test
+    public void testParseTimeString1() {
+        assertEquals(0, HslAlertPoller.parseTime("00:00:00"));
+    }
+
+    @Test
+    public void testParseTimeString2() {
+        assertEquals(45296, HslAlertPoller.parseTime("12:34:56"));
+    }
+
+    @Test
+    public void testParseTimeString3() {
+        assertEquals(131696, HslAlertPoller.parseTime("36:34:56"));
+    }
+
+    @Test
+    public void testParseTimeInt1() {
+        assertEquals("00:00:00", HslAlertPoller.parseTime(0));
+    }
+
+    @Test
+    public void testParseTimeInt2() {
+        assertEquals("12:34:56", HslAlertPoller.parseTime(45296));
+    }
+
+    @Test
+    public void testParseTimeInt3() {
+        assertEquals("36:34:56", HslAlertPoller.parseTime(131696));
+    }
+
+    @Test
+    public void testConvertTimeToCurrentServiceDay1() {
+        assertEquals("12:34:56", HslAlertPoller.convertTimeToCurrentServiceDay(0,"12:34:56"));
+    }
+
+    @Test
+    public void testConvertTimeToCurrentServiceDay2() {
+        assertEquals("12:34:56", HslAlertPoller.convertTimeToCurrentServiceDay(45296,"12:34:56"));
+    }
+
+    @Test
+    public void testConvertTimeToCurrentServiceDay3() {
+        assertEquals("36:34:56", HslAlertPoller.convertTimeToCurrentServiceDay(45297,"12:34:56"));
+    }
+
+    @Test
+    public void testConvertTimeToCurrentServiceDay4() {
+        assertEquals("24:10:00", HslAlertPoller.convertTimeToCurrentServiceDay(16200,"00:10:00"));
+    }
+
+    @Test
+    public void testConvertTimeToCurrentServiceDay5() {
+        assertEquals("28:29:00", HslAlertPoller.convertTimeToCurrentServiceDay(16200,"04:29:00"));
+    }
+
+    @Test
+    public void testConvertTimeToCurrentServiceDay6() {
+        assertEquals("04:30:00", HslAlertPoller.convertTimeToCurrentServiceDay(16200,"04:30:00"));
+    }
 }
