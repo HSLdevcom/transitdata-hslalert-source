@@ -99,14 +99,14 @@ public class HslAlertPoller {
         }
     }
 
-    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor) {
-        return createPulsarPayload(tripDescriptor, null);
+    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor, int joreDirection) {
+        return createPulsarPayload(tripDescriptor, joreDirection, null);
     }
 
-    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor, final String startTime) {
+    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor, int joreDirection, final String startTime) {
         InternalMessages.TripCancellation.Builder builder = InternalMessages.TripCancellation.newBuilder()
                 .setRouteId(tripDescriptor.getRouteId())
-                .setDirectionId(tripDescriptor.getDirectionId())
+                .setDirectionId(joreDirection)
                 .setStartDate(tripDescriptor.getStartDate())
                 .setStartTime(startTime != null ? startTime : tripDescriptor.getStartTime())
                 .setStatus(InternalMessages.TripCancellation.Status.CANCELED);
@@ -132,7 +132,7 @@ public class HslAlertPoller {
                         startTime);
                 final String dvjId = jedis.get(cacheKey);
                 if (dvjId != null) {
-                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor, startTime);
+                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor, joreDirection, startTime);
 
                     producer.newMessage().value(tripCancellation.toByteArray())
                             .eventTime(timestamp)
