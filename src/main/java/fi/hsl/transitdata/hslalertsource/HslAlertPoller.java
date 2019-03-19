@@ -3,6 +3,7 @@ package fi.hsl.transitdata.hslalertsource;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.transit.realtime.GtfsRealtime;
 import com.typesafe.config.Config;
+import fi.hsl.common.gtfsrt.ThirtyHourTime;
 import fi.hsl.common.transitdata.TransitdataProperties;
 import fi.hsl.common.transitdata.proto.InternalMessages;
 import org.apache.pulsar.client.api.Producer;
@@ -22,20 +23,25 @@ import java.util.Optional;
 public class HslAlertPoller {
 
     private static final Logger log = LoggerFactory.getLogger(HslAlertPoller.class);
-    private static  final int MINUTE_IN_SECONDS = 60;
-    private static final int HOUR_IN_SECONDS = 60 * MINUTE_IN_SECONDS;
-    private static final int DAY_IN_SECONDS = 24 * HOUR_IN_SECONDS;
 
     private final String urlString;
     private final Producer<byte[]> producer;
     private final Jedis jedis;
-    private final int serviceDayStartTime;
+    private final int serviceDayStartTimeSeconds;
 
     public HslAlertPoller(Producer<byte[]> producer, Jedis jedis, Config config) {
         this.urlString = config.getString("poller.url");
         this.producer = producer;
         this.jedis = jedis;
-        this.serviceDayStartTime =  parseTime(config.getString("poller.serviceDayStartTime"));
+        final String serviceDayStartTimeString = config.getString("poller.serviceDayStartTime");
+        int serviceDayStartTimeSeconds = 0;
+        try {
+            serviceDayStartTimeSeconds = ThirtyHourTime.timeStringToSeconds(serviceDayStartTimeString);
+        } catch (Exception e) {
+            log.warn(e.getMessage());
+        } finally {
+            this.serviceDayStartTimeSeconds = serviceDayStartTimeSeconds;
+        }
     }
 
     public void poll() throws InvalidProtocolBufferException, PulsarClientException, IOException {
@@ -71,23 +77,6 @@ public class HslAlertPoller {
                 .collect(Collectors.toList());
     }
 
-    static int parseTime(String time) {
-        String[] hms = time.split(":");
-        return Integer.parseInt(hms[0]) * HOUR_IN_SECONDS + Integer.parseInt(hms[1]) * MINUTE_IN_SECONDS + Integer.parseInt(hms[2]);
-    }
-
-    static String parseTime(int time) {
-        int h = time / HOUR_IN_SECONDS;
-        int m  = (time % HOUR_IN_SECONDS) / MINUTE_IN_SECONDS;
-        int s = time % MINUTE_IN_SECONDS;
-        return String.format("%02d:%02d:%02d", h, m, s);
-    }
-
-    static String convertTimeToCurrentServiceDay(final int serviceDayStartTime, final String time) {
-        int timeInSeconds = parseTime(time);
-        return timeInSeconds < serviceDayStartTime ? parseTime(DAY_IN_SECONDS + timeInSeconds) : time;
-    }
-
     private void handleFeedMessage(GtfsRealtime.FeedMessage feedMessage) throws PulsarClientException {
         final long timestamp = feedMessage.getHeader().getTimestamp();
 
@@ -100,14 +89,14 @@ public class HslAlertPoller {
         }
     }
 
-    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor, int joreDirection, Optional<String> startTime) {
+    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor, int joreDirection, Optional<ThirtyHourTime> startTime) {
         InternalMessages.TripCancellation.Builder builder = InternalMessages.TripCancellation.newBuilder()
                 .setRouteId(tripDescriptor.getRouteId())
                 .setDirectionId(joreDirection)
                 .setStartDate(tripDescriptor.getStartDate())
                 .setStartTime(tripDescriptor.getStartTime())
                 .setStatus(InternalMessages.TripCancellation.Status.CANCELED);
-        startTime.ifPresent(builder::setStartTime);
+        startTime.ifPresent(time -> builder.setStartTime(time.getTimeString()));
         //Version number is defined in the proto file as default value but we still need to set it since it's a required field
         builder.setSchemaVersion(builder.getSchemaVersion());
 
@@ -121,8 +110,8 @@ public class HslAlertPoller {
             if (tripDescriptor.hasScheduleRelationship() && tripDescriptor.getScheduleRelationship() == GtfsRealtime.TripDescriptor.ScheduleRelationship.CANCELED) {
                 //GTFS-RT direction is mapped to 0 & 1, our cache keys are in Jore-format 1 & 2
                 final int joreDirection = tripDescriptor.getDirectionId() + 1;
+                final ThirtyHourTime startTime = new ThirtyHourTime(serviceDayStartTimeSeconds, tripDescriptor.getStartTime());
 
-                final String startTime = convertTimeToCurrentServiceDay(serviceDayStartTime, tripDescriptor.getStartTime());
                 final String cacheKey = TransitdataProperties.formatJoreId(
                         tripDescriptor.getRouteId(),
                         Integer.toString(joreDirection),
