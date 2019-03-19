@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.Optional;
 
 public class HslAlertPoller {
 
@@ -99,17 +100,14 @@ public class HslAlertPoller {
         }
     }
 
-    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor, int joreDirection) {
-        return createPulsarPayload(tripDescriptor, joreDirection, null);
-    }
-
-    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor, int joreDirection, final String startTime) {
+    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor, int joreDirection, Optional<String> startTime) {
         InternalMessages.TripCancellation.Builder builder = InternalMessages.TripCancellation.newBuilder()
                 .setRouteId(tripDescriptor.getRouteId())
                 .setDirectionId(joreDirection)
                 .setStartDate(tripDescriptor.getStartDate())
-                .setStartTime(startTime != null ? startTime : tripDescriptor.getStartTime())
+                .setStartTime(tripDescriptor.getStartTime())
                 .setStatus(InternalMessages.TripCancellation.Status.CANCELED);
+        startTime.ifPresent(builder::setStartTime);
         //Version number is defined in the proto file as default value but we still need to set it since it's a required field
         builder.setSchemaVersion(builder.getSchemaVersion());
 
@@ -132,7 +130,7 @@ public class HslAlertPoller {
                         startTime);
                 final String dvjId = jedis.get(cacheKey);
                 if (dvjId != null) {
-                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor, joreDirection, startTime);
+                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor, joreDirection, Optional.of(startTime));
 
                     producer.newMessage().value(tripCancellation.toByteArray())
                             .eventTime(timestamp)

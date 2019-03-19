@@ -8,6 +8,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.net.URL;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -38,7 +39,7 @@ public class HslAlertPollerTest {
     private void validateInternalMessage(GtfsRealtime.TripUpdate update) {
         final GtfsRealtime.TripDescriptor trip = update.getTrip();
         final int joreDirection = trip.getDirectionId() + 1;
-        final InternalMessages.TripCancellation cancellation = HslAlertPoller.createPulsarPayload(trip, joreDirection);
+        final InternalMessages.TripCancellation cancellation = HslAlertPoller.createPulsarPayload(trip, joreDirection, Optional.empty());
 
         assertEquals(joreDirection, cancellation.getDirectionId());
         assertEquals(trip.getRouteId(), cancellation.getRouteId());
