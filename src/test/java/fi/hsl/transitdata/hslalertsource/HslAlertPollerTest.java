@@ -38,7 +38,7 @@ public class HslAlertPollerTest {
     private void validateInternalMessage(GtfsRealtime.TripUpdate update) {
         final GtfsRealtime.TripDescriptor trip = update.getTrip();
         final int joreDirection = trip.getDirectionId() + 1;
-        final InternalMessages.TripCancellation cancellation = HslAlertPoller.createPulsarPayload(trip, joreDirection);
+        final InternalMessages.TripCancellation cancellation = HslAlertPoller.createPulsarPayload(trip, joreDirection, InternalMessages.TripCancellation.Status.CANCELED);
 
         assertEquals(joreDirection, cancellation.getDirectionId());
         assertEquals(trip.getRouteId(), cancellation.getRouteId());
