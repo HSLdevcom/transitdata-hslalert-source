@@ -77,14 +77,16 @@ public class HslAlertPoller {
         }
     }
 
-    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor, int joreDirection, String dvjId) {
+    static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor,
+                                                                 int joreDirection, String dvjId,
+                                                                 InternalMessages.TripCancellation.Status status) {
         InternalMessages.TripCancellation.Builder builder = InternalMessages.TripCancellation.newBuilder()
                 .setTripId(dvjId)
                 .setRouteId(tripDescriptor.getRouteId())
                 .setDirectionId(joreDirection)
                 .setStartDate(tripDescriptor.getStartDate())
                 .setStartTime(tripDescriptor.getStartTime())
-                .setStatus(InternalMessages.TripCancellation.Status.CANCELED);
+                .setStatus(status);
         //Version number is defined in the proto file as default value but we still need to set it since it's a required field
         builder.setSchemaVersion(builder.getSchemaVersion());
 
@@ -94,8 +96,23 @@ public class HslAlertPoller {
     private void handleCancellation(GtfsRealtime.TripUpdate tripUpdate, long timestamp) throws PulsarClientException {
         try {
             final GtfsRealtime.TripDescriptor tripDescriptor = tripUpdate.getTrip();
-            // Only send the message if the TripUpdate is explicitly cancelled
-            if (tripDescriptor.hasScheduleRelationship() && tripDescriptor.getScheduleRelationship() == GtfsRealtime.TripDescriptor.ScheduleRelationship.CANCELED) {
+
+            InternalMessages.TripCancellation.Status status = null;
+
+            if (tripDescriptor.hasScheduleRelationship()) {
+                if (tripDescriptor.getScheduleRelationship() == GtfsRealtime.TripDescriptor.ScheduleRelationship.CANCELED) {
+                    status = InternalMessages.TripCancellation.Status.CANCELED;
+                }
+                else if (tripDescriptor.getScheduleRelationship() == GtfsRealtime.TripDescriptor.ScheduleRelationship.SCHEDULED) {
+                    status = InternalMessages.TripCancellation.Status.RUNNING;
+                }
+                else {
+                    log.warn("TripUpdate TripDescriptor ScheduledRelationship is {}", tripDescriptor.getScheduleRelationship());
+                }
+            }
+
+            if (status != null) {
+
                 //GTFS-RT direction is mapped to 0 & 1, our cache keys are in Jore-format 1 & 2
                 final int joreDirection = tripDescriptor.getDirectionId() + 1;
 
@@ -106,7 +123,7 @@ public class HslAlertPoller {
                         tripDescriptor.getStartTime());
                 final String dvjId = jedis.get(cacheKey);
                 if (dvjId != null) {
-                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor, joreDirection, dvjId);
+                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor, joreDirection, dvjId, status);
 
                     producer.newMessage().value(tripCancellation.toByteArray())
                             .eventTime(timestamp)
@@ -123,6 +140,9 @@ public class HslAlertPoller {
                 else {
                     log.error("Failed to produce trip cancellation message, could not find dvjId from Redis for key " + cacheKey);
                 }
+            }
+            else {
+                log.warn("TripUpdate has no schedule relationship in the trip descriptor, ignoring.");
             }
         }
         catch (PulsarClientException pe) {
