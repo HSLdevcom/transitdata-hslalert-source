@@ -66,14 +66,14 @@ public class HslAlertPoller {
     }
 
     private void handleFeedMessage(GtfsRealtime.FeedMessage feedMessage) throws PulsarClientException {
-        final long timestamp = feedMessage.getHeader().getTimestamp();
+        final long timestampMs = feedMessage.getHeader().getTimestamp() * 1000;
 
         List<GtfsRealtime.TripUpdate> tripUpdates = getTripUpdates(feedMessage);
         log.info("Handle {} FeedMessage entities with {} TripUpdates. Timestamp {}",
-                feedMessage.getEntityCount(), tripUpdates.size(), timestamp);
+                feedMessage.getEntityCount(), tripUpdates.size(), timestampMs);
 
         for (GtfsRealtime.TripUpdate tripUpdate: tripUpdates) {
-            handleCancellation(tripUpdate, timestamp);
+            handleCancellation(tripUpdate, timestampMs);
         }
     }
 
@@ -93,7 +93,7 @@ public class HslAlertPoller {
         return builder.build();
     }
 
-    private void handleCancellation(GtfsRealtime.TripUpdate tripUpdate, long timestamp) throws PulsarClientException {
+    private void handleCancellation(GtfsRealtime.TripUpdate tripUpdate, long timestampMs) throws PulsarClientException {
         try {
             final GtfsRealtime.TripDescriptor tripDescriptor = tripUpdate.getTrip();
 
@@ -126,7 +126,7 @@ public class HslAlertPoller {
                     InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor, joreDirection, dvjId, status);
 
                     producer.newMessage().value(tripCancellation.toByteArray())
-                            .eventTime(timestamp)
+                            .eventTime(timestampMs)
                             .key(dvjId)
                             .property(TransitdataProperties.KEY_DVJ_ID, dvjId)
                             .property(TransitdataProperties.KEY_PROTOBUF_SCHEMA, TransitdataProperties.ProtobufSchema.InternalMessagesTripCancellation.toString())
