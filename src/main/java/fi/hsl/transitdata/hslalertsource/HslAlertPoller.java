@@ -3,6 +3,7 @@ package fi.hsl.transitdata.hslalertsource;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.transit.realtime.GtfsRealtime;
 import com.typesafe.config.Config;
+import fi.hsl.common.transitdata.JoreDateTime;
 import fi.hsl.common.transitdata.TransitdataProperties;
 import fi.hsl.common.transitdata.proto.InternalMessages;
 import org.apache.pulsar.client.api.Producer;
@@ -17,6 +18,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.Optional;
 
 public class HslAlertPoller {
 
@@ -25,11 +27,13 @@ public class HslAlertPoller {
     private final String urlString;
     private final Producer<byte[]> producer;
     private final Jedis jedis;
+    private final String serviceDayStartTime;
 
     public HslAlertPoller(Producer<byte[]> producer, Jedis jedis, Config config) {
         this.urlString = config.getString("poller.url");
         this.producer = producer;
         this.jedis = jedis;
+        this.serviceDayStartTime = config.getString("poller.serviceDayStartTime");
     }
 
     public void poll() throws InvalidProtocolBufferException, PulsarClientException, IOException {
@@ -79,7 +83,7 @@ public class HslAlertPoller {
 
     static InternalMessages.TripCancellation createPulsarPayload(final GtfsRealtime.TripDescriptor tripDescriptor,
                                                                  int joreDirection, String dvjId,
-                                                                 InternalMessages.TripCancellation.Status status) {
+                                                                 InternalMessages.TripCancellation.Status status, Optional<JoreDateTime> startDateTime) {
         InternalMessages.TripCancellation.Builder builder = InternalMessages.TripCancellation.newBuilder()
                 .setTripId(dvjId)
                 .setRouteId(tripDescriptor.getRouteId())
@@ -87,6 +91,10 @@ public class HslAlertPoller {
                 .setStartDate(tripDescriptor.getStartDate())
                 .setStartTime(tripDescriptor.getStartTime())
                 .setStatus(status);
+        startDateTime.ifPresent(dateTime -> {
+            builder.setStartDate(dateTime.getJoreDateString());
+            builder.setStartTime(dateTime.getJoreTimeString());
+        });
         //Version number is defined in the proto file as default value but we still need to set it since it's a required field
         builder.setSchemaVersion(builder.getSchemaVersion());
 
@@ -115,15 +123,15 @@ public class HslAlertPoller {
 
                 //GTFS-RT direction is mapped to 0 & 1, our cache keys are in Jore-format 1 & 2
                 final int joreDirection = tripDescriptor.getDirectionId() + 1;
+                final JoreDateTime startDateTime = new JoreDateTime(serviceDayStartTime, tripDescriptor.getStartDate(), tripDescriptor.getStartTime());
 
                 final String cacheKey = TransitdataProperties.formatJoreId(
                         tripDescriptor.getRouteId(),
                         Integer.toString(joreDirection),
-                        tripDescriptor.getStartDate(),
-                        tripDescriptor.getStartTime());
+                        startDateTime);
                 final String dvjId = jedis.get(cacheKey);
                 if (dvjId != null) {
-                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor, joreDirection, dvjId, status);
+                    InternalMessages.TripCancellation tripCancellation = createPulsarPayload(tripDescriptor, joreDirection, dvjId, status, Optional.of(startDateTime));
 
                     producer.newMessage().value(tripCancellation.toByteArray())
                             .eventTime(timestampMs)
