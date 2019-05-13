@@ -17,6 +17,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.Optional;
@@ -102,6 +104,10 @@ public class HslAlertPoller {
         return builder.build();
     }
 
+    private String joreDateToIsoDate(final String joreDate) {
+        return LocalDate.parse(joreDate, DateTimeFormatter.ofPattern("yyyyMMdd")).toString();
+    }
+
     private void handleCancellation(GtfsRealtime.TripUpdate tripUpdate, long timestampMs) throws PulsarClientException {
         try {
             final GtfsRealtime.TripDescriptor tripDescriptor = tripUpdate.getTrip();
@@ -124,7 +130,8 @@ public class HslAlertPoller {
 
                 //GTFS-RT direction is mapped to 0 & 1, our cache keys are in Jore-format 1 & 2
                 final int joreDirection = tripDescriptor.getDirectionId() + 1;
-                final JoreDateTime startDateTime = new JoreDateTime(serviceDayStartTime, tripDescriptor.getStartDate(), tripDescriptor.getStartTime());
+                final String dateString = joreDateToIsoDate(tripDescriptor.getStartDate());
+                final JoreDateTime startDateTime = new JoreDateTime(serviceDayStartTime, dateString, tripDescriptor.getStartTime());
 
                 final String cacheKey = TransitdataProperties.formatJoreId(
                         tripDescriptor.getRouteId(),
