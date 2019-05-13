@@ -11,6 +11,7 @@ import org.apache.pulsar.client.api.PulsarClientException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.exceptions.JedisConnectionException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -156,6 +157,10 @@ public class HslAlertPoller {
         catch (PulsarClientException pe) {
             log.error("Failed to send message to Pulsar", pe);
             throw pe;
+        }
+        catch (JedisConnectionException e) {
+            log.error("Failed to connect to Redis", e);
+            throw e;
         }
         catch (Exception e) {
             log.error("Failed to handle cancellation message", e);
