@@ -1,16 +1,12 @@
 package fi.hsl.transitdata.hslalertsource;
 
-import java.net.*;
 import java.io.*;
-import java.util.Arrays;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.transit.realtime.GtfsRealtime;
 import com.typesafe.config.Config;
-import fi.hsl.common.config.ConfigUtils;
 import fi.hsl.common.config.ConfigParser;
 import fi.hsl.common.pulsar.PulsarApplication;
 import fi.hsl.common.pulsar.PulsarApplicationContext;
