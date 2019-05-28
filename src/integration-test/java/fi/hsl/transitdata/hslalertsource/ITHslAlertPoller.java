@@ -40,7 +40,7 @@ public class ITHslAlertPoller extends ITBaseTestSuite {
         final PulsarApplicationContext context = app.getContext();
         final Jedis jedis = context.getJedis();
         jedis.set("jore:4562-1-20181031-11:12:00", "123");
-        final Config config = PulsarMockApplication.readConfigWithOverride("environment.conf", "poller.url", getResourcePath("two-entities.pb"));
+        final Config config = PulsarMockApplication.readConfigWithOverride("environment.conf", "poller.url", getResourcePath("two.pb"));
         poller = new HslAlertPoller(context.getProducer(), jedis, config);
         final IMessageHandler handler = new NoopMessageHandler(context);
         testPulsarMessageHandler(handler, app, logic, testId);
