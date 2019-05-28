@@ -11,7 +11,7 @@ import java.net.URL;
 
 import static org.junit.Assert.*;
 
-public class HslAlertPollerIntegrationTest extends ITBaseTestSuite {
+public class ITHslAlertPoller extends ITBaseTestSuite {
     HslAlertPoller poller;
 
     @Test
